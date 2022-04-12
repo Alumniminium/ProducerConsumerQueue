@@ -4,21 +4,25 @@ using System.Threading;
 
 namespace herst.threading
 {
-    public class SingleThreadWorkQueue<T>
+    public class MultiThreadWorkQueue<T>
     {
         public int QueueSize => Queue.Count;
         private readonly BlockingCollection<T> Queue = new();
-        private readonly Thread workerThread;
+        private readonly Thread[] workerThreads;
         private readonly Action<T> Process;
 
-        public SingleThreadWorkQueue(Action<T> process)
+        public MultiThreadWorkQueue(Action<T> process, int threadCount = 1)
         {
             // setting workerThread.IsBackground = true;
             // makes it so when the main thread exits, workerThread will also exit
             // without that, workerThread will keep running and the program will hang
             Process = process;
-            workerThread = new Thread(WorkLoop) { IsBackground = true };
-            workerThread.Start();
+            workerThreads = new Thread[threadCount];
+            for(var i = 0; i < threadCount; i++)
+            {
+                workerThreads[i] = new Thread(WorkLoop) { IsBackground = true };
+                workerThreads[i].Start();
+            }
         }
 
         public void Enqueue(T item) => Queue.Add(item);

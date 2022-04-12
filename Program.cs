@@ -9,16 +9,16 @@ namespace herst.threading
 {
     public static class Program
     {
-        public static readonly SingleThreadWorkQueue<string> BackgroundConsole = new (Console.WriteLine);
-        public static readonly MultiThreadWorkQueue<string> BackgroundProxyTester = new (TestProxy, 24);
+        public static readonly MultiThreadWorkQueue<string> gbConsole = new (threadCount: 1, @do: Console.WriteLine);
+        public static readonly MultiThreadWorkQueue<string> bgProxyTester = new (threadCount: 24, @do: TestProxy);
 
         public static void Main()
         {
-            File.ReadAllLines("proxylist.txt").ToList().ForEach(BackgroundProxyTester.Enqueue);
+            File.ReadAllLines("proxylist.txt").ToList().ForEach(bgProxyTester.Enqueue);
 
-            while(BackgroundProxyTester.QueueSize > 0)
+            while(bgProxyTester.QueueSize > 0)
             {
-                BackgroundConsole.Enqueue($"[{Environment.CurrentManagedThreadId}]: Queue size: {BackgroundProxyTester.QueueSize}");
+                gbConsole.Enqueue($"[{Environment.CurrentManagedThreadId}]: Queue size: {bgProxyTester.QueueSize}");
                 Thread.Sleep(10000);
             }
         }
@@ -46,7 +46,7 @@ namespace herst.threading
             catch {}
             finally
             {
-                BackgroundConsole.Enqueue($"[{Environment.CurrentManagedThreadId}]: {proxy} {(works ? "works" : "dead")}");
+                gbConsole.Enqueue($"[{Environment.CurrentManagedThreadId}]: {proxy} {(works ? "works" : "dead")}");
             }
         }
     }
