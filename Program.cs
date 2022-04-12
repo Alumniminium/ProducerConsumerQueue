@@ -1,100 +1,53 @@
 ﻿using System;
-using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Text.RegularExpressions;
 using System.Threading;
 
-namespace PCQ
+namespace herst.threading
 {
     public static class Program
     {
-        public static bool USE_QUEUED_OUTPUT,RedDone,BlueDone,GreenDone,WhiteDone = false;
-
-        public static Thread WriteBlueThread, WriteRedThread, WriteGreenThread,WriteWhiteThread;
-        public static ManualResetEvent Block = new ManualResetEvent(false);
+        public static readonly SingleThreadWorkQueue<string> BackgroundConsole = new (Console.WriteLine);
+        public static readonly MultiThreadWorkQueue<string> BackgroundProxyTester = new (TestProxy, 24);
 
         public static void Main()
         {
-            SafeConsole.Clear();
-            Block.Reset();
-            RedDone = false;
-            BlueDone = false;
-            WhiteDone = false;
-            GreenDone = false;
+            File.ReadAllLines("proxylist.txt").ToList().ForEach(BackgroundProxyTester.Enqueue);
 
-            SafeConsole.WriteLine("USE QUEUE? (Y/N)");
-            var input = Console.ReadLine().ToUpperInvariant();
-            switch (input)
+            while(BackgroundProxyTester.QueueSize > 0)
             {
-                case "Y":
-                    USE_QUEUED_OUTPUT = true;
-                    break;
-                case "N":
-                    USE_QUEUED_OUTPUT = false;
-                    break;
-                default:
-                    Main();
-                    break;
+                BackgroundConsole.Enqueue($"[{Environment.CurrentManagedThreadId}]: Queue size: {BackgroundProxyTester.QueueSize}");
+                Thread.Sleep(10000);
             }
-            
-            WriteBlueThread = new Thread(WriteBlueLoop);
-            WriteRedThread = new Thread(WriteRedLoop);
-            WriteGreenThread = new Thread(WriteGreenLoop);
-            WriteWhiteThread = new Thread(WriteWhiteLoop);
-
-            WriteBlueThread.Start();
-            WriteRedThread.Start();
-            WriteGreenThread.Start();
-            WriteWhiteThread.Start();
-            Block.Set();
-
-
-            while (!RedDone || !BlueDone || !WhiteDone || !GreenDone)
-                Thread.Sleep(1);
-
-            if (USE_QUEUED_OUTPUT)
-                Thread.Sleep(100);
-            
-            SafeConsole.WriteLine("Simulation finished. Press ENTER to restart.");
-            Console.ReadLine();
-            Main();
         }
 
-        public static void WriteBlueLoop()
+        private static void TestProxy(string proxy)
         {
-            Block.WaitOne();
-            for (int i = 0; i < 5; i++)
-            {
-                SafeConsole.WriteLine("BLUE", ConsoleColor.Blue, USE_QUEUED_OUTPUT);
-            }
-            BlueDone = true;
-        }
+            var match = Regex.Match(proxy, @"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}", RegexOptions.Compiled);
+            if (!match.Success)
+                return;
 
-        public static void WriteRedLoop()
-        {
-            Block.WaitOne();
-            for (int i = 0; i < 5; i++)
-            {
-                SafeConsole.WriteLine("RED", ConsoleColor.Red, USE_QUEUED_OUTPUT);
-            }
-            RedDone = true;
-        }
-        public static void WriteGreenLoop()
-        {
-            Block.WaitOne();
-            for (int i = 0; i < 5; i++)
-            {
-                SafeConsole.WriteLine("GREEN", ConsoleColor.Green, USE_QUEUED_OUTPUT);
-            }
-            GreenDone = true;
-        }
+            var ip = proxy.Split(':')[0];
+            var port = ushort.Parse(proxy.Split(':')[1]);
+            var works = false;
 
-        public static void WriteWhiteLoop()
-        {
-            Block.WaitOne();
-            for (int i = 0; i < 5; i++)
+            var webProxy = new WebProxy(ip, port);
+            var request = WebRequest.Create("https://her.st/404.html") as HttpWebRequest;
+            request.Proxy = webProxy;
+            request.Timeout = (int)TimeSpan.FromSeconds(10).TotalMilliseconds;
+
+            try
             {
-                SafeConsole.WriteLine("WHITE", ConsoleColor.White, USE_QUEUED_OUTPUT);
+                request.GetResponse().GetResponseStream().CopyTo(Stream.Null);
+                works=true;
             }
-            WhiteDone = true;
+            catch {}
+            finally
+            {
+                BackgroundConsole.Enqueue($"[{Environment.CurrentManagedThreadId}]: {proxy} {(works ? "works" : "dead")}");
+            }
         }
     }
 }
